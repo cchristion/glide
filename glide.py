@@ -1,4 +1,4 @@
-"""Script to create zip files auitable to upload to automation pipeline."""
+"""Script to validate, re-structure and create zip files, to upload to automation pipeline."""
 
 # /// script
 # requires-python = ">=3.12"
@@ -28,7 +28,7 @@ from tika import parser
 from manigen import manicov
 
 parser.from_buffer("")
-min_emails = 100
+min_emails = 10
 workdir = "z6yLr36C"
 ignore_files = [".yaml", ".PNG", ".manifest"]
 min_email_pattern = r"@"
@@ -168,6 +168,7 @@ def find_email(file: Path, mode: str | None = None) -> bool:
                         email_count += len(email_pattern.findall(fline))
                         if email_count >= min_emails:
                             break
+    logging.info("Processing : Found %d emails count for %r", email_count, str(file))
     return email_count
 
 

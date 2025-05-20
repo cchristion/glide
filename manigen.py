@@ -80,6 +80,7 @@ def manicov(input_manifest: Path, output_manifest: Path, search_dir: Path) -> No
 
     new_data["files"] = []
     for item in search_dir.iterdir():
+        logging.info("Processing : %r", str(item))
         if item.is_dir():
             for key, pat in dir_pattern.items():
                 hit = pat.search(str(item))
@@ -87,6 +88,7 @@ def manicov(input_manifest: Path, output_manifest: Path, search_dir: Path) -> No
                     new_data["files"].append(
                         {"path": str(item.name), "delimiter": dir_delimiter[key]},
                     )
+                    break
 
     for key, pat in pattern.items():
         hit = pat.search(data["Source"])
