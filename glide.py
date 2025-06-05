@@ -57,11 +57,12 @@ email_pattern = re.compile(email_pattern, re.IGNORECASE)
 min_email_pattern = re.compile(min_email_pattern, re.IGNORECASE)
 sql_pattern = re.compile("|".join(sql_pattern), re.IGNORECASE)
 
+logger = logging.getLogger(__name__)
 logging.basicConfig(
     format="%(asctime)s : %(levelname)s : %(message)s",
     datefmt="%Y%m%dT%H%M%S",
     encoding="utf-8",
-    level=logging.INFO,
+    level=logging.DEBUG,
 )
 
 
@@ -112,12 +113,12 @@ def cleanup(search_dir: Path) -> None:
         for dirn in dirnames:
             if str(dirn) == workdir:
                 shutil.rmtree(dirpath / dirn)
-                logging.info("Deleted %r", str(dirpath / dirn))
+                logger.info("Deleted %r", str(dirpath / dirn))
 
 
 def get_filtered_files(search_dir: Path) -> Iterator[Path]:
     """Get filtered files."""
-    logging.info("Fetching files from %r", str(search_dir))
+    logger.info("Fetching files from %r", str(search_dir))
     for dirpath, _, filenames in search_dir.walk():
         for file in filenames:
             if Path(file).suffix not in ignore_files:
@@ -147,7 +148,7 @@ def classify_file(file: Path) -> str:
 
 def find_email(file: Path, mode: str | None = None) -> bool:
     """Check if Email is greater or lesser than given."""
-    logging.info("Processing : Fetching emails count for %r", str(file))
+    logger.info("Processing : Fetching emails count for %r", str(file))
     email_count = 0
     match mode:
         case "tika":
@@ -168,7 +169,7 @@ def find_email(file: Path, mode: str | None = None) -> bool:
                         email_count += len(email_pattern.findall(fline))
                         if email_count >= min_emails:
                             break
-    logging.info("Processing : Found %d emails count for %r", email_count, str(file))
+    logger.info("Processing : Found %d emails count for %r", email_count, str(file))
     return email_count
 
 
@@ -201,7 +202,7 @@ def upload_link(file: Path, file_index: int, search_dir: Path, delimiter: str) -
     file_link = delimiter_dir / (str(file_index) + " - " + file.name)
     rel_sym = file.resolve().relative_to(file_link.parent.resolve(), walk_up=True)
     file_link.symlink_to(rel_sym)
-    logging.info(
+    logger.info(
         "Linked: %r to %r",
         str(file_link),
         str(rel_sym),
@@ -217,10 +218,10 @@ def process_csv(
     """Process CSV."""
     email_count = find_email(file)
     if email_count < min_emails:
-        logging.info("Ignoring : File %r has %d emails", str(file), email_count)
+        logger.info("Ignoring : File %r has %d emails", str(file), email_count)
         return True
     found_delimiter_char = custom_delimiter if custom_delimiter else get_delimiter(file)
-    logging.info("File delimiter is %r for %r", found_delimiter_char, str(file))
+    logger.info("File delimiter is %r for %r", found_delimiter_char, str(file))
     for delimiter_name, delimiter_char in delimiter_types.items():
         if found_delimiter_char == delimiter_char:
             upload_link(file, file_index, search_dir, delimiter_name)
@@ -241,9 +242,9 @@ def gen_manifest_zip(search_dir: Path) -> None:
     cmd = f"cd {str(udir)!r} && rm {zip_file} ; zip -r {zip_file} ./*"
     result = subprocess.run(cmd, shell=True, check=True, text=True, capture_output=True)
     if result.returncode != 0:
-        logging.error("zipping %s", result.stderr)
+        logger.error("zipping %s", result.stderr)
         return False
-    logging.info("Created zip file %r", search_dir.name + ".zip")
+    logger.info("Created zip file %r", search_dir.name + ".zip")
     return True
 
 
@@ -256,9 +257,9 @@ def process_xlsx(file: Path, file_index: int, search_dir: Path) -> bool:
         sheet = pd.read_excel(file, sheet_name=sheet_name)
         outcsv = outdir / f"{file_index!s} - {sheet_index!s} - {sheet_name!s}.csv"
         sheet.to_csv(outcsv, index=False, encoding="utf-8")
-        logging.info("Converting : xslx %r to csv %r", str(file), str(outcsv))
+        logger.info("Converting : xslx %r to csv %r", str(file), str(outcsv))
         if not process_csv(outcsv, file_index, search_dir, custom_delimiter=","):
-            logging.error("Aborting : Unable to process csv file %r", str(file))
+            logger.error("Aborting : Unable to process csv file %r", str(file))
             return False
     return True
 
@@ -270,7 +271,7 @@ def preprocess_sql(search_dir: Path) -> bool:
         outdir.mkdir(parents=True, exist_ok=True)
         if classify_file(file) == "sql":
             cmd = f"go_sql2csv -f {str(file)!r} -o {str(outdir)!r}"
-            logging.info("Converting : sql %r to csv", str(file))
+            logger.info("Converting : sql %r to csv", str(file))
             result = subprocess.run(
                 cmd,
                 shell=True,
@@ -279,13 +280,13 @@ def preprocess_sql(search_dir: Path) -> bool:
                 capture_output=False,
             )
             if result.returncode != 0:
-                logging.error(
+                logger.error(
                     "Aborting : Convertion error of sql %r with error: %s",
                     str(file),
                     result.stderr,
                 )
                 return False
-            logging.info("Deleting : File %r", str(file))
+            logger.info("Deleting : File %r", str(file))
             file.unlink()
     return True
 
@@ -296,38 +297,38 @@ def glide(search_dir: Path, parsable_dir: Path) -> None:
         file_type = classify_file(file)
         match file_type:
             case "csv":
-                logging.info("Processing : File as 'csv' %r", str(file))
+                logger.info("Processing : File as 'csv' %r", str(file))
                 if not process_csv(file, file_index, search_dir):
-                    logging.error("Aborting : Unable to process file %r", str(file))
+                    logger.error("Aborting : Unable to process file %r", str(file))
                     return
             case "sql":
-                logging.info("Processing : File as 'sql' %r", str(file))
+                logger.info("Processing : File as 'sql' %r", str(file))
                 email_count = find_email(file)
                 if email_count >= min_emails:
-                    logging.error("Aborting : File type is 'sql' for %r", str(file))
+                    logger.error("Aborting : File type is 'sql' for %r", str(file))
                     return
             case "json":
-                logging.info("Processing : File as 'json' %r", str(file))
+                logger.info("Processing : File as 'json' %r", str(file))
                 email_count = find_email(file)
                 if email_count >= min_emails:
-                    logging.error("Aborting : File type is 'json' for %r", str(file))
+                    logger.error("Aborting : File type is 'json' for %r", str(file))
                     return
             case "application/vnd.ms-excel":
-                logging.info("Processing : File as 'xlsx' %r", str(file))
+                logger.info("Processing : File as 'xlsx' %r", str(file))
                 if not process_xlsx(file, file_index, search_dir):
-                    logging.error(
+                    logger.error(
                         "Aborting : Unable to process xlsx file %r",
                         str(file),
                     )
                     return
             case "application/x-7z-compressed":
-                logging.error(
+                logger.error(
                     "Aborting : Unable to process 7z file %r",
                     str(file),
                 )
                 return
             case "application/zip":
-                logging.error(
+                logger.error(
                     "Aborting : Unable to process zip file %r",
                     str(file),
                 )
@@ -335,7 +336,7 @@ def glide(search_dir: Path, parsable_dir: Path) -> None:
             case _:
                 email_count = find_email(file, mode="tika")
                 if email_count >= min_emails:
-                    logging.error(
+                    logger.error(
                         "Aborting : File %r classfied as %r has %d emails",
                         str(file),
                         file_type,
@@ -348,15 +349,15 @@ def glide(search_dir: Path, parsable_dir: Path) -> None:
         and gen_manifest_zip(search_dir)
         and parsable_dir
     ):
-        logging.info("Parsed sucessfully %r", str(search_dir))
+        logger.info("Parsed sucessfully %r", str(search_dir))
         shutil.move(search_dir, parsable_dir)
-        logging.info("Moving %r to %r", str(search_dir), str(parsable_dir))
+        logger.info("Moving %r to %r", str(search_dir), str(parsable_dir))
     else:
         if Path(search_dir, workdir, "upload").exists():
-            logging.warning("Nothing to Parse in %r", str(search_dir))
+            logger.warning("Nothing to Parse in %r", str(search_dir))
         if args["rejected_dir"]:
             shutil.move(search_dir, args["rejected_dir"])
-            logging.info("Moving %r to %r", str(search_dir), str(args["rejected_dir"]))
+            logger.info("Moving %r to %r", str(search_dir), str(args["rejected_dir"]))
 
 
 if __name__ == "__main__":
