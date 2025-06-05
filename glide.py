@@ -22,10 +22,9 @@ from pathlib import Path
 
 import magic
 import pandas as pd
+import yaml
 from charset_normalizer import from_bytes
 from tika import parser
-
-from manigen import manicov
 
 parser.from_buffer("")
 min_emails = 10
@@ -41,6 +40,7 @@ delimiter_types = {
     "tsv": "\t",
     "dash": "-",
 }
+source_names = ["XSS", "LeakBase", "BreachForums", "DarkForums", "Cracked"]
 sql_pattern = [
     "MySQL",
     "SQL dump",
@@ -227,6 +227,54 @@ def process_csv(
             upload_link(file, file_index, search_dir, delimiter_name)
             return True
     return None
+
+
+def manicov(input_manifest: Path, output_manifest: Path, search_dir: Path) -> None:
+    """Generate manifest using given manifest."""
+    logger.info("Reading %s", input_manifest)
+
+    pattern = {x: re.compile(x, re.IGNORECASE) for x in source_names}
+    dir_pattern = {x: re.compile(x, re.IGNORECASE) for x in delimiter_types}
+
+    with Path.open(input_manifest, "r") as file:
+        try:
+            data = yaml.safe_load(file)
+            logger.info("Sucessfully read manifest %r", str(input_manifest))
+        except yaml.scanner.ScannerError:
+            logger.info("Unable to read manifest %r", str(input_manifest))
+            return False
+
+    new_data = {}
+
+    new_data["files"] = []
+    for item in search_dir.iterdir():
+        logger.info("Processing : %r", str(item))
+        if item.is_dir():
+            for key, pat in dir_pattern.items():
+                hit = pat.search(str(item))
+                if hit:
+                    new_data["files"].append(
+                        {"path": str(item.name), "delimiter": delimiter_types[key]},
+                    )
+                    break
+
+    for key, pat in pattern.items():
+        hit = pat.search(data["Source"])
+        if hit:
+            new_data["source_names"] = [key]
+            break
+
+    new_data["breach_victim"] = data["Title"]
+    new_data["advertise_url"] = data["Source"]
+    new_data["download_url"] = data["Download Link"]
+    new_data["published_date"] = data["Source Date"]
+    new_data["actors"] = [str(data["Actor"])]
+
+    with Path.open(output_manifest, "w") as file:
+        logger.info("Writing to %r", str(output_manifest))
+        yaml.dump(new_data, file)
+
+    return True
 
 
 def gen_manifest_zip(search_dir: Path) -> None:
