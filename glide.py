@@ -1,4 +1,8 @@
-"""Script to validate, re-structure and create zip files, to upload to automation pipeline."""
+"""Glide Automtion Script.
+
+Script to validate, re-structure and create zip files,
+to upload to automation pipeline.
+"""
 
 # /// script
 # requires-python = ">=3.12"
@@ -7,6 +11,7 @@
 #     "openpyxl~=3.1.5",
 #     "pandas~=2.2.3",
 #     "python-magic~=0.4.27",
+#     "pyxlsb~=1.0",
 #     "pyyaml~=6.0.2",
 #     "tika~=3.1.0",
 # ]
@@ -26,12 +31,13 @@ import yaml
 from charset_normalizer import from_bytes
 from tika import parser
 
-parser.from_buffer("")
+# --- Configuration Section ---
+# This part of the code handles configurations.
+
 min_emails = 10
 workdir = "z6yLr36C"
 ignore_files = [".yaml", ".PNG", ".manifest"]
-min_email_pattern = r"@"
-email_pattern = r"[\w.$_%+-]+@[\w.-]+\.[\w]{2,6}"
+source_names = ["XSS", "LeakBase", "BreachForums", "DarkForums", "Cracked"]
 delimiter_types = {
     "csv": ",",
     "semicolon": ";",
@@ -40,7 +46,11 @@ delimiter_types = {
     "tsv": "\t",
     "dash": "-",
 }
-source_names = ["XSS", "LeakBase", "BreachForums", "DarkForums", "Cracked"]
+
+# --- End Configuration Section ---
+
+min_email_pattern = r"@"
+email_pattern = r"[\w.$_%+-]+@[\w.-]+\.[\w]{2,6}"
 sql_pattern = [
     "MySQL",
     "SQL dump",
@@ -51,7 +61,7 @@ sql_pattern = [
 ]
 json_pattern = r"{[\s\w\"\']+:"
 
-
+parser.from_buffer("")
 json_pattern = re.compile(json_pattern, re.IGNORECASE)
 email_pattern = re.compile(email_pattern, re.IGNORECASE)
 min_email_pattern = re.compile(min_email_pattern, re.IGNORECASE)
@@ -68,6 +78,7 @@ logging.basicConfig(
 
 def cli() -> dict:
     """CLI parser for glide."""
+    logger.debug("Parsing cli arguments.")
     parser = argparse.ArgumentParser(
         description="Script to automate the automation pipeline",
     )
@@ -80,15 +91,15 @@ def cli() -> dict:
         "-p",
         "--parsable_dir",
         type=Path,
-        help="Directory to move parsable directories to.",
-        default=None,
+        help='Directory to move parsable directories to. default: "parsable_dir"',
+        default=Path("parsable_dir"),
     )
     parser.add_argument(
         "-j",
         "--rejected_dir",
         type=Path,
-        help="Directory to move rejected directories to.",
-        default=None,
+        help='Directory to move rejected directories to. default: "rejected_dir"',
+        default=Path("rejected_dir"),
     )
     parser.add_argument(
         "-s",
@@ -96,15 +107,23 @@ def cli() -> dict:
         action="store_true",
         help="Option to parse sql.",
     )
-    args = parser.parse_args()
-    return vars(args)
+    parser.add_argument(
+        "-i",
+        "--ignore",
+        action="store_true",
+        help="Ignore files with emails if its not parasable.",
+    )
+    args = vars(parser.parse_args())
+    logger.debug("Parsed %r arguments.", args)
 
-
-def get_encoding(file: Path) -> str:
-    """Get encoding of the file."""
-    with Path.open(file, "rb") as f:
-        results = from_bytes(f.read(1024 * 10))
-        return results.best().encoding
+    logger.debug(
+        "Checking and creating %r and %r directories",
+        str(args["parsable_dir"]),
+        str(args["rejected_dir"]),
+    )
+    args["parsable_dir"].mkdir(parents=True, exist_ok=True)
+    args["rejected_dir"].mkdir(parents=True, exist_ok=True)
+    return args
 
 
 def cleanup(search_dir: Path) -> None:
@@ -113,12 +132,12 @@ def cleanup(search_dir: Path) -> None:
         for dirn in dirnames:
             if str(dirn) == workdir:
                 shutil.rmtree(dirpath / dirn)
-                logger.info("Deleted %r", str(dirpath / dirn))
+                logger.debug("Deleted %r", str(dirpath / dirn))
 
 
 def get_filtered_files(search_dir: Path) -> Iterator[Path]:
     """Get filtered files."""
-    logger.info("Fetching files from %r", str(search_dir))
+    logger.debug("Fetching files from %r", str(search_dir))
     for dirpath, _, filenames in search_dir.walk():
         for file in filenames:
             if Path(file).suffix not in ignore_files:
@@ -138,17 +157,21 @@ def classify_file(file: Path) -> str:
             ) as f_a:
                 f_b = f_a.read(1024 * 10)
             if sql_pattern.search(f_b):
+                logger.debug("File classified as SQL, file: %r", str(file))
                 return "sql"
             if json_pattern.search(f_b):
+                logger.debug("File classified as JSON, file: %r", str(file))
                 return "json"
+            logger.debug("File classified as CSV, file: %r", str(file))
             return "csv"
         case _:
+            logger.debug("File classified as %r, file: %r", file_magic, str(file))
             return file_magic
 
 
 def find_email(file: Path, mode: str | None = None) -> bool:
     """Check if Email is greater or lesser than given."""
-    logger.info("Processing : Fetching emails count for %r", str(file))
+    logger.debug("Fetch email count from file: %r", str(file))
     email_count = 0
     match mode:
         case "tika":
@@ -169,7 +192,11 @@ def find_email(file: Path, mode: str | None = None) -> bool:
                         email_count += len(email_pattern.findall(fline))
                         if email_count >= min_emails:
                             break
-    logger.info("Processing : Found %d emails count for %r", email_count, str(file))
+    logger.debug(
+        "Found %d emails in file: %r",
+        email_count,
+        str(file),
+    )
     return email_count
 
 
@@ -191,7 +218,16 @@ def get_delimiter(file: Path) -> str | None:
             except csv.Error:
                 continue
             else:
+                logger.debug(
+                    "Identified %r delimiter for CSV file: %r",
+                    dialect.delimiter,
+                    str(file),
+                )
                 return dialect.delimiter
+    logger.warning(
+        "Unable to identify delimiter for CSV file: %r",
+        str(file),
+    )
     return None
 
 
@@ -202,8 +238,8 @@ def upload_link(file: Path, file_index: int, search_dir: Path, delimiter: str) -
     file_link = delimiter_dir / (str(file_index) + " - " + file.name)
     rel_sym = file.resolve().relative_to(file_link.parent.resolve(), walk_up=True)
     file_link.symlink_to(rel_sym)
-    logger.info(
-        "Linked: %r to %r",
+    logger.debug(
+        "Created soft link from %r to %r",
         str(file_link),
         str(rel_sym),
     )
@@ -218,50 +254,70 @@ def process_csv(
     """Process CSV."""
     email_count = find_email(file)
     if email_count < min_emails:
-        logger.info("Ignoring : File %r has %d emails", str(file), email_count)
+        logger.info(
+            "Insufficient emails of %d, Ignoring file: %r",
+            email_count,
+            str(file),
+        )
         return True
     found_delimiter_char = custom_delimiter if custom_delimiter else get_delimiter(file)
-    logger.info("File delimiter is %r for %r", found_delimiter_char, str(file))
+    logger.info(
+        "Processing CSV with delimiter %r for file: %r",
+        found_delimiter_char,
+        str(file),
+    )
     for delimiter_name, delimiter_char in delimiter_types.items():
         if found_delimiter_char == delimiter_char:
             upload_link(file, file_index, search_dir, delimiter_name)
             return True
-    return None
+
+    logger.critical(
+        "Unable to process CSV with delimiter %r for file: %r",
+        found_delimiter_char,
+        str(file),
+    )
+    return False
 
 
-def manicov(input_manifest: Path, output_manifest: Path, search_dir: Path) -> None:
-    """Generate manifest using given manifest."""
-    logger.info("Reading %s", input_manifest)
-
+def manifest_gen(input_manifest: Path, output_manifest: Path, search_dir: Path) -> None:
+    """Generate automation manifest using given manifest."""
+    logger.debug("Reading manifest file: %r", input_manifest)
     pattern = {x: re.compile(x, re.IGNORECASE) for x in source_names}
     dir_pattern = {x: re.compile(x, re.IGNORECASE) for x in delimiter_types}
 
     with Path.open(input_manifest, "r") as file:
         try:
             data = yaml.safe_load(file)
-            logger.info("Sucessfully read manifest %r", str(input_manifest))
+            logger.debug("Sucessfully read manifest file: %r", str(input_manifest))
         except yaml.scanner.ScannerError:
-            logger.info("Unable to read manifest %r", str(input_manifest))
+            logger.critical("Unable to read manifest file: %r", str(input_manifest))
             return False
 
     new_data = {}
-
     new_data["files"] = []
     for item in search_dir.iterdir():
-        logger.info("Processing : %r", str(item))
-        if item.is_dir():
-            for key, pat in dir_pattern.items():
-                hit = pat.search(str(item))
-                if hit:
-                    new_data["files"].append(
-                        {"path": str(item.name), "delimiter": delimiter_types[key]},
-                    )
-                    break
+        for key, pat in dir_pattern.items():
+            hit = pat.search(str(item))
+            if hit:
+                new_data["files"].append(
+                    {"path": str(item.name), "delimiter": delimiter_types[key]},
+                )
+                logger.debug(
+                    "Found %r directory, adding it to manifest file: %r",
+                    str(item.name),
+                    str(input_manifest),
+                )
+                break
 
     for key, pat in pattern.items():
         hit = pat.search(data["Source"])
         if hit:
             new_data["source_names"] = [key]
+            logger.debug(
+                "Found %r source, adding it to manifest file: %r",
+                new_data["source_names"],
+                str(input_manifest),
+            )
             break
 
     new_data["breach_victim"] = data["Title"]
@@ -271,28 +327,22 @@ def manicov(input_manifest: Path, output_manifest: Path, search_dir: Path) -> No
     new_data["actors"] = [str(data["Actor"])]
 
     with Path.open(output_manifest, "w") as file:
-        logger.info("Writing to %r", str(output_manifest))
+        logger.info("Writing manifest file: %r", str(output_manifest))
         yaml.dump(new_data, file)
 
     return True
 
 
-def gen_manifest_zip(search_dir: Path) -> None:
-    """Generate Manifest and Zip."""
-    if not manicov(
-        next(iter(search_dir.glob("./*.manifest"))),
-        Path(search_dir, workdir, "upload", "manifest.yaml"),
-        Path(search_dir, workdir, "upload"),
-    ):
-        return False
+def zip_gen(search_dir: Path) -> None:
+    """Generate Zip."""
     udir = Path(search_dir, workdir, "upload").absolute()
     zip_file = repr(search_dir.name + ".zip")
     cmd = f"cd {str(udir)!r} && rm {zip_file} ; zip -r {zip_file} ./*"
     result = subprocess.run(cmd, shell=True, check=True, text=True, capture_output=True)
     if result.returncode != 0:
-        logger.error("zipping %s", result.stderr)
+        logger.critical("Error zipping: %s", result.stderr)
         return False
-    logger.info("Created zip file %r", search_dir.name + ".zip")
+    logger.info("Created zip file: %r", search_dir.name + ".zip")
     return True
 
 
@@ -305,9 +355,9 @@ def process_xlsx(file: Path, file_index: int, search_dir: Path) -> bool:
         sheet = pd.read_excel(file, sheet_name=sheet_name)
         outcsv = outdir / f"{file_index!s} - {sheet_index!s} - {sheet_name!s}.csv"
         sheet.to_csv(outcsv, index=False, encoding="utf-8")
-        logger.info("Converting : xslx %r to csv %r", str(file), str(outcsv))
+        logger.info("Converted : xslx %r to csv %r", str(file), str(outcsv))
         if not process_csv(outcsv, file_index, search_dir, custom_delimiter=","):
-            logger.error("Aborting : Unable to process csv file %r", str(file))
+            logger.critical("Aborting : Unable to process csv file %r", str(file))
             return False
     return True
 
@@ -328,7 +378,7 @@ def preprocess_sql(search_dir: Path) -> bool:
                 capture_output=False,
             )
             if result.returncode != 0:
-                logger.error(
+                logger.critical(
                     "Aborting : Convertion error of sql %r with error: %s",
                     str(file),
                     result.stderr,
@@ -345,67 +395,106 @@ def glide(search_dir: Path, parsable_dir: Path) -> None:
         file_type = classify_file(file)
         match file_type:
             case "csv":
-                logger.info("Processing : File as 'csv' %r", str(file))
+                logger.info("Processing file as CSV, file: %r", str(file))
                 if not process_csv(file, file_index, search_dir):
-                    logger.error("Aborting : Unable to process file %r", str(file))
+                    if args["ignore"]:
+                        logger.info("Ignoring file: %r", file)
+                        continue
                     return
             case "sql":
-                logger.info("Processing : File as 'sql' %r", str(file))
+                logger.info("Processing file as SQL, file: %r", str(file))
                 email_count = find_email(file)
                 if email_count >= min_emails:
-                    logger.error("Aborting : File type is 'sql' for %r", str(file))
+                    logger.critical(
+                        "Aborting : SQL file has %d emails, file: %r",
+                        email_count,
+                        str(file),
+                    )
+                    if args["ignore"]:
+                        logger.info("Ignoring file: %r", file)
+                        continue
                     return
+                logger.debug(
+                    "Insufficient emails of %d, Ignoring SQL file: %r",
+                    email_count,
+                    str(file),
+                )
             case "json":
-                logger.info("Processing : File as 'json' %r", str(file))
+                logger.info("Processing file as JSON, file:  %r", str(file))
                 email_count = find_email(file)
                 if email_count >= min_emails:
-                    logger.error("Aborting : File type is 'json' for %r", str(file))
+                    logger.critical(
+                        "Aborting : JSON file has %d emails, file: %r",
+                        email_count,
+                        str(file),
+                    )
+                    if args["ignore"]:
+                        logger.info("Ignoring file: %r", file)
+                        continue
                     return
+                logger.debug(
+                    "Insufficient emails of %d, Ignoring JSON file: %r",
+                    email_count,
+                    str(file),
+                )
             case "application/vnd.ms-excel":
-                logger.info("Processing : File as 'xlsx' %r", str(file))
+                logger.info("Processing file as XLSX, file:  %r", str(file))
                 if not process_xlsx(file, file_index, search_dir):
                     logger.error(
-                        "Aborting : Unable to process xlsx file %r",
+                        "Aborting : Unable to process XLSX file %r",
                         str(file),
                     )
+                    if args["ignore"]:
+                        logger.info("Ignoring file: %r", file)
+                        continue
                     return
-            case "application/x-7z-compressed":
+            case "application/x-7z-compressed" | "application/zip":
                 logger.error(
-                    "Aborting : Unable to process 7z file %r",
+                    "Aborting : Unable to process %r, file: %r",
+                    file_type,
                     str(file),
                 )
-                return
-            case "application/zip":
-                logger.error(
-                    "Aborting : Unable to process zip file %r",
-                    str(file),
-                )
+                if args["ignore"]:
+                    logger.info("Ignoring file: %r", file)
+                    continue
                 return
             case _:
+                logger.info("Processing : File as %r, file: %r", file_type, str(file))
                 email_count = find_email(file, mode="tika")
                 if email_count >= min_emails:
-                    logger.error(
-                        "Aborting : File %r classfied as %r has %d emails",
-                        str(file),
+                    logger.critical(
+                        "Aborting : File classfied as %r has %d emails, file: %r",
                         file_type,
                         email_count,
+                        str(file),
                     )
+                    if args["ignore"]:
+                        logger.info("Ignoring file: %r", file)
+                        continue
                     return
+                logger.debug(
+                    "Insufficient emails of %d, Ignoring %r file: %r",
+                    email_count,
+                    file_type,
+                    str(file),
+                )
 
-    if (
-        Path(search_dir, workdir, "upload").exists()
-        and gen_manifest_zip(search_dir)
-        and parsable_dir
-    ):
+    if Path(search_dir, workdir, "upload").exists():
+        if not manifest_gen(
+            next(iter(search_dir.glob("./*.manifest"))),
+            Path(search_dir, workdir, "upload", "manifest.yaml"),
+            Path(search_dir, workdir, "upload"),
+        ):
+            return
+        if not zip_gen(search_dir):
+            return
         logger.info("Parsed sucessfully %r", str(search_dir))
         shutil.move(search_dir, parsable_dir)
-        logger.info("Moving %r to %r", str(search_dir), str(parsable_dir))
+        logger.info("Moved %r to %r", str(search_dir), str(parsable_dir))
     else:
-        if Path(search_dir, workdir, "upload").exists():
-            logger.warning("Nothing to Parse in %r", str(search_dir))
-        if args["rejected_dir"]:
-            shutil.move(search_dir, args["rejected_dir"])
-            logger.info("Moving %r to %r", str(search_dir), str(args["rejected_dir"]))
+        logger.warning("Nothing to Parse in %r", str(search_dir))
+        shutil.move(search_dir, args["rejected_dir"])
+        logger.info("Moved %r to %r", str(search_dir), str(args["rejected_dir"]))
 
 
 if __name__ == "__main__":
