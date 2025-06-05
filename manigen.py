@@ -55,7 +55,8 @@ def manicov(input_manifest: Path, output_manifest: Path, search_dir: Path) -> No
     logging.info("Reading %s", input_manifest)
 
     pattern = {
-        x: re.compile(x, re.IGNORECASE) for x in ["XSS", "LeakBase", "BreachForums"]
+        x: re.compile(x, re.IGNORECASE)
+        for x in ["XSS", "LeakBase", "BreachForums", "DarkForums", "Cracked"]
     }
 
     dir_delimiter = {
