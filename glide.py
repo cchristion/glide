@@ -1,8 +1,4 @@
-"""Glide Automtion Script.
-
-Script to validate, re-structure and create zip files,
-to upload to automation pipeline.
-"""
+"""Glide: Automated Data Pipeline Zip Creator."""
 
 # /// script
 # requires-python = ">=3.12"
@@ -80,7 +76,7 @@ def cli() -> dict:
     """CLI parser for glide."""
     logger.debug("Parsing cli arguments.")
     parser = argparse.ArgumentParser(
-        description="Script to automate the automation pipeline",
+        description="Glide: Automated Data Pipeline Zip Creator.",
     )
     parser.add_argument(
         "search_dir",
@@ -231,8 +227,8 @@ def get_delimiter(file: Path) -> str | None:
     return None
 
 
-def upload_link(file: Path, file_index: int, search_dir: Path, delimiter: str) -> None:
-    """Create s symlink to upload_dir."""
+def symlinker(file: Path, file_index: int, search_dir: Path, delimiter: str) -> None:
+    """Create symlink to upload_dir."""
     delimiter_dir = Path(search_dir, workdir, "upload", delimiter)
     delimiter_dir.mkdir(parents=True, exist_ok=True)
     file_link = delimiter_dir / (str(file_index) + " - " + file.name)
@@ -268,7 +264,7 @@ def process_csv(
     )
     for delimiter_name, delimiter_char in delimiter_types.items():
         if found_delimiter_char == delimiter_char:
-            upload_link(file, file_index, search_dir, delimiter_name)
+            symlinker(file, file_index, search_dir, delimiter_name)
             return True
 
     logger.critical(
@@ -281,7 +277,7 @@ def process_csv(
 
 def manifest_gen(input_manifest: Path, output_manifest: Path, search_dir: Path) -> None:
     """Generate automation manifest using given manifest."""
-    logger.debug("Reading manifest file: %r", input_manifest)
+    logger.debug("Reading manifest file: %r", str(input_manifest))
     pattern = {x: re.compile(x, re.IGNORECASE) for x in source_names}
     dir_pattern = {x: re.compile(x, re.IGNORECASE) for x in delimiter_types}
 
@@ -392,92 +388,97 @@ def preprocess_sql(search_dir: Path) -> bool:
 def glide(search_dir: Path, parsable_dir: Path) -> None:
     """Automate the automation pipeline."""
     for file_index, file in enumerate(get_filtered_files(search_dir)):
-        file_type = classify_file(file)
-        match file_type:
-            case "csv":
-                logger.info("Processing file as CSV, file: %r", str(file))
-                if not process_csv(file, file_index, search_dir):
-                    if args["ignore"]:
-                        logger.info("Ignoring file: %r", file)
-                        continue
-                    return
-            case "sql":
-                logger.info("Processing file as SQL, file: %r", str(file))
-                email_count = find_email(file)
-                if email_count >= min_emails:
-                    logger.critical(
-                        "Aborting : SQL file has %d emails, file: %r",
+        try:
+            file_type = classify_file(file)
+            match file_type:
+                case "csv":
+                    logger.info("Processing file as CSV, file: %r", str(file))
+                    if not process_csv(file, file_index, search_dir):
+                        if args["ignore"]:
+                            logger.info("Ignoring file: %r", str(file))
+                            continue
+                        return
+                case "sql":
+                    logger.info("Processing file as SQL, file: %r", str(file))
+                    email_count = find_email(file)
+                    if email_count >= min_emails:
+                        logger.critical(
+                            "Aborting : SQL file has %d emails, file: %r",
+                            email_count,
+                            str(file),
+                        )
+                        if args["ignore"]:
+                            logger.info("Ignoring file: %r", str(file))
+                            continue
+                        return
+                    logger.debug(
+                        "Insufficient emails of %d, Ignoring SQL file: %r",
                         email_count,
                         str(file),
                     )
-                    if args["ignore"]:
-                        logger.info("Ignoring file: %r", file)
-                        continue
-                    return
-                logger.debug(
-                    "Insufficient emails of %d, Ignoring SQL file: %r",
-                    email_count,
-                    str(file),
-                )
-            case "json":
-                logger.info("Processing file as JSON, file:  %r", str(file))
-                email_count = find_email(file)
-                if email_count >= min_emails:
-                    logger.critical(
-                        "Aborting : JSON file has %d emails, file: %r",
+                case "json":
+                    logger.info("Processing file as JSON, file:  %r", str(file))
+                    email_count = find_email(file)
+                    if email_count >= min_emails:
+                        logger.critical(
+                            "Aborting : JSON file has %d emails, file: %r",
+                            email_count,
+                            str(file),
+                        )
+                        if args["ignore"]:
+                            logger.info("Ignoring file: %r", str(file))
+                            continue
+                        return
+                    logger.debug(
+                        "Insufficient emails of %d, Ignoring JSON file: %r",
                         email_count,
                         str(file),
                     )
-                    if args["ignore"]:
-                        logger.info("Ignoring file: %r", file)
-                        continue
-                    return
-                logger.debug(
-                    "Insufficient emails of %d, Ignoring JSON file: %r",
-                    email_count,
-                    str(file),
-                )
-            case "application/vnd.ms-excel":
-                logger.info("Processing file as XLSX, file:  %r", str(file))
-                if not process_xlsx(file, file_index, search_dir):
+                case "application/vnd.ms-excel":
+                    logger.info("Processing file as XLSX, file:  %r", str(file))
+                    if not process_xlsx(file, file_index, search_dir):
+                        logger.error(
+                            "Aborting : Unable to process XLSX file %r",
+                            str(file),
+                        )
+                        if args["ignore"]:
+                            logger.info("Ignoring file: %r", str(file))
+                            continue
+                        return
+                case "application/x-7z-compressed" | "application/zip":
                     logger.error(
-                        "Aborting : Unable to process XLSX file %r",
-                        str(file),
-                    )
-                    if args["ignore"]:
-                        logger.info("Ignoring file: %r", file)
-                        continue
-                    return
-            case "application/x-7z-compressed" | "application/zip":
-                logger.error(
-                    "Aborting : Unable to process %r, file: %r",
-                    file_type,
-                    str(file),
-                )
-                if args["ignore"]:
-                    logger.info("Ignoring file: %r", file)
-                    continue
-                return
-            case _:
-                logger.info("Processing : File as %r, file: %r", file_type, str(file))
-                email_count = find_email(file, mode="tika")
-                if email_count >= min_emails:
-                    logger.critical(
-                        "Aborting : File classfied as %r has %d emails, file: %r",
+                        "Aborting : Unable to process %r, file: %r",
                         file_type,
-                        email_count,
                         str(file),
                     )
                     if args["ignore"]:
-                        logger.info("Ignoring file: %r", file)
+                        logger.info("Ignoring file: %r", str(file))
                         continue
                     return
-                logger.debug(
-                    "Insufficient emails of %d, Ignoring %r file: %r",
-                    email_count,
-                    file_type,
-                    str(file),
-                )
+                case _:
+                    logger.info(
+                        "Processing : File as %r, file: %r", file_type, str(file)
+                    )
+                    email_count = find_email(file, mode="tika")
+                    if email_count >= min_emails:
+                        logger.critical(
+                            "Aborting : File classfied as %r has %d emails, file: %r",
+                            file_type,
+                            email_count,
+                            str(file),
+                        )
+                        if args["ignore"]:
+                            logger.info("Ignoring file: %r", str(file))
+                            continue
+                        return
+                    logger.debug(
+                        "Insufficient emails of %d, Ignoring %r file: %r",
+                        email_count,
+                        file_type,
+                        str(file),
+                    )
+        except Exception:
+            logger.exception("Error: ")
 
     if Path(search_dir, workdir, "upload").exists():
         if not manifest_gen(
