@@ -46,8 +46,8 @@ Table of Contents
 
 - Clone the repository:
     ```bash
-    git clone https://github.com/cchristion/gilde
-    cd gilde
+    git clone https://github.com/cchristion/glide
+    cd glide
     ```
 
 Note:
@@ -55,6 +55,12 @@ Note:
 - Ensure uv and the gotool for SQL conversion are installed and accessible in your system's PATH.
 
 ## Usage
+
+Note:
+- Before running glide.py run, this is prep tika.
+```bash
+echo 'from tika import parser; parser.from_buffer(""); print("tika is runing")' | uv run --with tika -
+```
 
 ```bash
 uv run glide.py --help 
