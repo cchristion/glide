@@ -3,7 +3,7 @@
 # /// script
 # requires-python = ">=3.12"
 # dependencies = [
-#     "charset-normalizer~=3.4.2",
+#     "numpy<=2.2",
 #     "openpyxl~=3.1.5",
 #     "pandas~=2.2.3",
 #     "python-magic~=0.4.27",
@@ -24,7 +24,6 @@ from pathlib import Path
 import magic
 import pandas as pd
 import yaml
-from charset_normalizer import from_bytes
 from tika import parser
 
 # --- Configuration Section ---
