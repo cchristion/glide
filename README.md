@@ -57,7 +57,7 @@ Note:
 ## Usage
 
 Note:
-- Before running glide.py run, this is prep tika.
+- Before running glide.py run, this will prep tika.
 ```bash
 echo 'from tika import parser; parser.from_buffer(""); print("tika is runing")' | uv run --with tika -
 ```
