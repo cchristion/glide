@@ -230,7 +230,7 @@ def symlinker(file: Path, file_index: int, search_dir: Path, delimiter: str) -> 
     """Create symlink to upload_dir."""
     delimiter_dir = Path(search_dir, workdir, "upload", delimiter)
     delimiter_dir.mkdir(parents=True, exist_ok=True)
-    file_link = delimiter_dir / (str(file_index) + " - " + file.name)
+    file_link = delimiter_dir / (str(file_index) + " - " + file.name + ".csv")
     rel_sym = file.resolve().relative_to(file_link.parent.resolve(), walk_up=True)
     file_link.symlink_to(rel_sym)
     logger.debug(
