@@ -397,42 +397,6 @@ def glide(search_dir: Path, parsable_dir: Path) -> None:
                             logger.info("Ignoring file: %r", str(file))
                             continue
                         return
-                case "sql":
-                    logger.info("Processing file as SQL, file: %r", str(file))
-                    email_count = find_email(file)
-                    if email_count >= min_emails:
-                        logger.critical(
-                            "Aborting : SQL file has %d emails, file: %r",
-                            email_count,
-                            str(file),
-                        )
-                        if args["ignore"]:
-                            logger.info("Ignoring file: %r", str(file))
-                            continue
-                        return
-                    logger.debug(
-                        "Insufficient emails of %d, Ignoring SQL file: %r",
-                        email_count,
-                        str(file),
-                    )
-                case "json":
-                    logger.info("Processing file as JSON, file:  %r", str(file))
-                    email_count = find_email(file)
-                    if email_count >= min_emails:
-                        logger.critical(
-                            "Aborting : JSON file has %d emails, file: %r",
-                            email_count,
-                            str(file),
-                        )
-                        if args["ignore"]:
-                            logger.info("Ignoring file: %r", str(file))
-                            continue
-                        return
-                    logger.debug(
-                        "Insufficient emails of %d, Ignoring JSON file: %r",
-                        email_count,
-                        str(file),
-                    )
                 case "application/vnd.ms-excel":
                     logger.info("Processing file as XLSX, file:  %r", str(file))
                     if not process_xlsx(file, file_index, search_dir):
@@ -455,13 +419,14 @@ def glide(search_dir: Path, parsable_dir: Path) -> None:
                         continue
                     return
                 case _:
-                    logger.info(
-                        "Processing : File as %r, file: %r", file_type, str(file)
+                    logger.info("Processing file as %r, file: %r", file_type, str(file))
+                    email_count = find_email(
+                        file,
+                        mode=None if file_type in ["sql", "json"] else "tika",
                     )
-                    email_count = find_email(file, mode="tika")
                     if email_count >= min_emails:
                         logger.critical(
-                            "Aborting : File classfied as %r has %d emails, file: %r",
+                            "Aborting : %s file has %d emails, file: %r",
                             file_type,
                             email_count,
                             str(file),
