@@ -230,7 +230,9 @@ def symlinker(file: Path, file_index: int, search_dir: Path, delimiter: str) -> 
     """Create symlink to upload_dir."""
     delimiter_dir = Path(search_dir, workdir, "upload", delimiter)
     delimiter_dir.mkdir(parents=True, exist_ok=True)
-    file_link = delimiter_dir / (str(file_index) + " - " + file.name + ".csv")
+    file_link = delimiter_dir / (
+        str(file_index) + " - " + file.name + ("" if file.suffix == ".csv" else ".csv")
+    )
     rel_sym = file.resolve().relative_to(file_link.parent.resolve(), walk_up=True)
     file_link.symlink_to(rel_sym)
     logger.debug(
@@ -360,9 +362,9 @@ def process_xlsx(file: Path, file_index: int, search_dir: Path) -> bool:
 def preprocess_sql(search_dir: Path) -> bool:
     """Convert sql to csv's."""
     for file_index, file in enumerate(get_filtered_files(search_dir)):
-        outdir = Path(search_dir, ".glide", "sql2csv", str(file_index))
-        outdir.mkdir(parents=True, exist_ok=True)
         if classify_file(file) == "sql":
+            outdir = Path(search_dir, ".glide", "sql2csv", str(file_index))
+            outdir.mkdir(parents=True, exist_ok=True)
             cmd = f"go_sql2csv -f {str(file)!r} -o {str(outdir)!r}"
             logger.info("Converting : sql %r to csv", str(file))
             result = subprocess.run(
@@ -379,12 +381,10 @@ def preprocess_sql(search_dir: Path) -> bool:
                     result.stderr,
                 )
                 return False
-            logger.info("Deleting : File %r", str(file))
-            file.unlink()
     return True
 
 
-def glide(search_dir: Path, parsable_dir: Path) -> None:
+def glide(search_dir: Path, parsable_dir: Path, parse_sql: bool) -> None:
     """Automate the automation pipeline."""
     for file_index, file in enumerate(get_filtered_files(search_dir)):
         try:
@@ -419,6 +419,8 @@ def glide(search_dir: Path, parsable_dir: Path) -> None:
                         continue
                     return
                 case _:
+                    if parse_sql and file_type == "sql":
+                        continue
                     logger.info("Processing file as %r, file: %r", file_type, str(file))
                     email_count = find_email(
                         file,
@@ -467,4 +469,4 @@ if __name__ == "__main__":
     cleanup(args["search_dir"])
     if args["parse_sql"]:
         preprocess_sql(args["search_dir"])
-    glide(args["search_dir"], args["parsable_dir"])
+    glide(args["search_dir"], args["parsable_dir"], args["parse_sql"])
