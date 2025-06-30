@@ -365,7 +365,7 @@ def preprocess_sql(search_dir: Path) -> bool:
         if classify_file(file) == "sql":
             outdir = Path(search_dir, ".glide", "sql2csv", str(file_index))
             outdir.mkdir(parents=True, exist_ok=True)
-            cmd = f"go_sql2csv -f {str(file)!r} -o {str(outdir)!r}"
+            cmd = f"csql {str(file)!r} && go_sql2csv -f 1.sql -o {str(outdir)!r} && rm -rf 1.sql .csql.tmp"
             logger.info("Converting : sql %r to csv", str(file))
             result = subprocess.run(
                 cmd,

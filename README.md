@@ -52,7 +52,7 @@ Table of Contents
 
 Note:
 - uv will manage dependencies and virtual enviroment.
-- Ensure uv and the gotool for SQL conversion are installed and accessible in your system's PATH.
+- Ensure **uv**, **csql** and the **go_sql2csv** for SQL conversion are installed and accessible in your system's PATH.
 
 ## Usage
 
@@ -84,7 +84,7 @@ options:
     - -p, --parsable_dir \<directory>: Specifies the destination directory where the processed, zipped data directory will be moved if all checks pass.
     - -j, --rejected_dir \<directory>: Specifies the destination directory for input directories that do not contain enough email addresses or fail initial checks.
     - -i, --ignore: If present, the script will ignore unprocessable files and continue execution instead of terminating.
-    - -s, --parse_sql: If present, enables the conversion of .sql files to .csv during processing using the gotool.
+    - -s, --parse_sql: If present, enables the conversion of .sql files to .csv during processing using the go_sql2csv.
 
 ## File Processing Logic
 - The script follows a robust processing flow:
@@ -101,7 +101,7 @@ options:
         - other
     - Format Conversion & Delimiter Detection:
         - xlsx files are converted to csv.
-        - sql files are converted to csv (if --sql is enabled) using the gotool.
+        - sql files are converted to csv (if --sql is enabled) using the go_sql2csv.
         - csv files are analyzed for their delimiters.
     - Output Structuring:
         - A workdir/upload directory is created.
