@@ -125,7 +125,7 @@ def cleanup(search_dir: Path) -> None:
     """Cleanup upload_dir before processing."""
     for dirpath, dirnames, _ in search_dir.walk():
         for dirn in dirnames:
-            if str(dirn) == workdir:
+            if str(dirn) in (workdir, ".glide"):
                 shutil.rmtree(dirpath / dirn)
                 logger.debug("Deleted %r", str(dirpath / dirn))
 
