@@ -1,30 +1,35 @@
 """Glide: Automated Data Pipeline Zip Creator."""
 
 # /// script
-# requires-python = ">=3.12"
+# requires-python = "~=3.13.5"
 # dependencies = [
-#     "numpy<=2.2",
+#     "numpy~=2.2.6",
 #     "openpyxl~=3.1.5",
 #     "pandas~=2.2.3",
 #     "python-magic~=0.4.27",
-#     "pyxlsb~=1.0",
+#     "pyxlsb~=1.0.10",
 #     "pyyaml~=6.0.2",
+#     "sqlglot[rs]~=26.33.0",
 #     "tika~=3.1.0",
+#     "tqdm~=4.67.1",
 # ]
 # ///
+
 import argparse
 import csv
 import logging
 import re
 import shutil
 import subprocess
-from collections.abc import Iterator
+from collections.abc import Generator, Iterator
 from pathlib import Path
 
 import magic
 import pandas as pd
+import sqlglot
 import yaml
 from tika import parser
+from tqdm import tqdm
 
 # --- Configuration Section ---
 # This part of the code handles configurations.
@@ -359,28 +364,65 @@ def process_xlsx(file: Path, file_index: int, search_dir: Path) -> bool:
     return True
 
 
+def sql_chunk(file: Path) -> Generator[str]:
+    """Give chunks of sql file."""
+    sql_command = ""
+
+    with Path.open(file) as f:
+        num_lines = sum(1 for _ in f)
+
+    with Path.open(file) as f:
+        for line in tqdm(f, total=num_lines, leave=False, mininterval=1):
+            sql_command += line
+            if line.strip().endswith(";"):
+                yield sql_command
+                sql_command = ""
+        yield sql_command
+
+
 def preprocess_sql(search_dir: Path) -> bool:
     """Convert sql to csv's."""
     for file_index, file in enumerate(get_filtered_files(search_dir)):
         if classify_file(file) == "sql":
-            outdir = Path(search_dir, ".glide", "sql2csv", str(file_index))
+            outdir = Path(search_dir.absolute(), workdir, "s2c", str(file_index))
             outdir.mkdir(parents=True, exist_ok=True)
-            cmd = f"csql {str(file)!r} && go_sql2csv -f 1.sql -o {str(outdir)!r} && rm -rf 1.sql .csql.tmp"
             logger.info("Converting : sql %r to csv", str(file))
-            result = subprocess.run(
-                cmd,
-                shell=True,
-                check=True,
-                text=True,
-                capture_output=False,
-            )
-            if result.returncode != 0:
-                logger.critical(
-                    "Aborting : Convertion error of sql %r with error: %s",
-                    str(file),
-                    result.stderr,
-                )
-                return False
+            for seg in sql_chunk(file):
+                if "@" not in seg:
+                    continue
+                if "INSERT" not in seg:
+                    continue
+                try:
+                    lp = sqlglot.parse(seg, read="mysql")
+                    tbl_name = lp[0].this.this.name
+                    col_name = [i.name for i in lp[0].this.expressions]
+                    table_data = []
+                    for a in lp:
+                        if a.expression:
+                            for b in a.expression.expressions:
+                                table_data.append(
+                                    [c.name for c in b.expressions],
+                                )
+
+                    if not col_name:
+                        col_name = [
+                            "unnamed_" + str(i) for i in range(len(table_data[0]))
+                        ]
+
+                    pd.DataFrame(table_data, columns=col_name).to_csv(
+                        outdir / tbl_name,
+                        index=False,
+                        na_rep="",
+                        mode="a",
+                        header=not Path(f"out/{tbl_name}").exists(),
+                    )
+                except Exception as err:
+                    logger.critical(
+                        "Aborting : Convertion error of sql %r with error: %s",
+                        str(file),
+                        err,
+                    )
+                    return False
     return True
 
 
@@ -420,6 +462,9 @@ def glide(search_dir: Path, parsable_dir: Path, parse_sql: bool) -> None:
                     return
                 case _:
                     if parse_sql and file_type == "sql":
+                        logger.info(
+                            "Ignoring SQL file, Since it has been converted to csv's",
+                        )
                         continue
                     logger.info("Processing file as %r, file: %r", file_type, str(file))
                     email_count = find_email(
