@@ -1,7 +1,9 @@
+#!/usr/bin/env -S uv run --script
+
 """Glide: Automated Data Pipeline Zip Creator."""
 
 # /// script
-# requires-python = "~=3.13.5"
+# requires-python = "~=3.12.11"
 # dependencies = [
 #     "numpy~=2.2.6",
 #     "openpyxl~=3.1.5",
