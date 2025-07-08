@@ -52,7 +52,7 @@ Table of Contents
 
 Note:
 - uv will manage dependencies and virtual enviroment.
-- Ensure **uv**, **csql** and the **go_sql2csv** for SQL conversion are installed and accessible in your system's PATH.
+- Ensure **uv** is installed and accessible in your system's PATH.
 
 ## Usage
 
