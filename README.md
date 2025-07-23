@@ -1,13 +1,8 @@
 # Glide: Automated Data Pipeline Zip Creator
 
-This Python script automates the process of preparing and packaging data directories into ZIP archives for ingestion into data pipelines. It intelligently processes various file types, extracts metadata, converts formats, and organizes the output, ensuring compliance and readiness for pipeline consumption.
+*Note: Data generated from this script should be validated !!!*
 
-Table of Contents
-- Features
-- Installation
-- Usage
-- File Processing Logic
-- Output Structure
+This Python script automates the process of preparing and packaging data directories into ZIP archives for ingestion into data pipelines. It intelligently processes various file types, extracmanually- Output Structure
 - Contributing
 - License
 
@@ -22,7 +17,7 @@ Table of Contents
     - Threshold-based Filtering: Processes files only if they contain at least 10 "bare emails" (or full emails after validation) to ensure relevant data.
     - Rejected Directories: Automatically moves directories without sufficient emails to a specified rejected directory (-j/--rejected_dir).
 - Intelligent File Exclusion:
-    - Ignores .yaml, .PNG, and .manifest files present in the root directory of the input.
+    - Ignores .yaml and .PNG files present in the root directory of the input.
 - Source Name Extraction: Extracts the source name from the provided .manifest file for metadata.
 - Dynamic Directory Creation:
     - Creates dedicated subdirectories within workdir/upload/ based on detected CSV delimiters: csv, semicolon, colon, pipe, tsv, and dash.
@@ -34,57 +29,93 @@ Table of Contents
     - CSV Delimiter Detection: Automatically detects the delimiter used in CSV files.
 - Format Conversion:
     - XLSX to CSV: Converts .xlsx files to .csv.
-    - SQL to CSV: Converts .sql files to .csv if the --sql argument is provided, linking them to workdir/upload/csv. This conversion utilizes a go tool.
-- JSON File Identification: Informs if a file is identified as JSON.
+    - SQL to CSV: Converts .sql files (mysql) to .csv if the -s/--sql argument is provided, linking them to workdir/upload/csv.
 - Metadata Generation: Creates metadata based on the provided YAML manifest.
 - Output Management:
     - Clean Restart: Deletes the previously created workdir directory on every script restart to ensure a clean slate.
     - Parsable Directory: Moves the entire processed directory (including the final ZIP) to a user-specified parsable directory (-p/--parsable_dir) if all checks pass.
     - Unprocessable File Handling: The --ignore argument allows the script to proceed even if files are unprocessable, preventing immediate termination.
 
-## Installation
+## Usage
 
-- Clone the repository:
+1. Clone the repository:
     ```bash
     git clone https://github.com/cchristion/glide
     cd glide
     ```
+2. Create a fresh python virtual enviroment
+    ```bash
+    # Example for micromamba
+    micromamba create -n mamba -y -q -c conda-forge python=3
+    ```
+3. Prep Tika
+    ```bash
+    echo 'from tika import parser; parser.from_buffer(""); print("tika is runing")' | uv run --with tika -
+    ```
+4. Execute glide.py
+    ```
+    uv run --script glide.py -s <search_dir>
+    ```
+    - search_dir \<directory> structure:
+        ```bash
+        .
+        ├── IMAGE.PNG           # ignored
+        ├── MANIFEST.manifest   # processed
+        ├── DATA1.txt           # processed
+        ├── DATA2.txt           # processed
+        └── metadata.yaml       # ignored
+        ```
+    - Help:
+        ```
+        uv run --script glide.py --help 
+        usage: glide.py [-h] [-p PARSABLE_DIR] [-j REJECTED_DIR] [-s] [-i] search_dir
+
+        positional arguments:
+        search_dir            Directory to Search
+
+        options:
+        -h, --help            show this help message and exit
+        -p, --parsable_dir PARSABLE_DIR
+                                Directory to move parsable directories to. default: "parsable_dir"
+        -j, --rejected_dir REJECTED_DIR
+                                Directory to move rejected directories to. default: "rejected_dir"
+        -s, --parse_sql       Option to parse sql.
+        -i, --ignore          Ignore files with emails if its not parasable.
+        ```
+        - Arguments:
+            - search_dir \<directory>: The path to the directory containing the files to be processed.
+        - Options:
+            - -p, --parsable_dir \<directory>: Specifies the destination directory where the processed, zipped data directory will be moved if all checks pass.
+            - -j, --rejected_dir \<directory>: Specifies the destination directory for input directories that do not contain enough email addresses or fail initial checks.
+            - -i, --ignore: If present, the script will ignore unprocessable files and continue execution instead of terminating.
+            - -s, --parse_sql: If present, enables the conversion of .sql files to .csv during processing using the go_sql2csv.
 
 Note:
-- uv will manage dependencies and virtual enviroment.
+- uv will manage dependencies.
+- Ensure you are in a clean python virtual enviroment
 - Ensure **uv** is installed and accessible in your system's PATH.
 
-## Usage
+## Default Configuration
 
-Note:
-- Before running glide.py run, this will prep tika.
-```bash
-echo 'from tika import parser; parser.from_buffer(""); print("tika is runing")' | uv run --with tika -
+```python
+# --- Configuration Section ---
+# This part of the code handles configurations.
+
+min_emails = 10
+workdir = "z6yLr36C"
+ignore_files = [".yaml", ".PNG", ".manifest"]
+source_names = ["XSS", "LeakBase", "BreachForums", "DarkForums", "Cracked"]
+delimiter_types = {
+    "csv": ",",
+    "semicolon": ";",
+    "colon": ":",
+    "pipe": "|",
+    "tsv": "\t",
+    "dash": "-",
+}
+
+# --- End Configuration Section ---
 ```
-
-```bash
-uv run glide.py --help 
-usage: glide.py [-h] [-p PARSABLE_DIR] [-j REJECTED_DIR] [-s] [-i] search_dir
-
-positional arguments:
-  search_dir            Directory to Search
-
-options:
-  -h, --help            show this help message and exit
-  -p, --parsable_dir PARSABLE_DIR
-                        Directory to move parsable directories to. default: "parsable_dir"
-  -j, --rejected_dir REJECTED_DIR
-                        Directory to move rejected directories to. default: "rejected_dir"
-  -s, --parse_sql       Option to parse sql.
-  -i, --ignore          Ignore files with emails if its not parasable.
-```
-- Arguments:
-    - \<input_directory>: The path to the directory containing the files to be processed.
-- Options:
-    - -p, --parsable_dir \<directory>: Specifies the destination directory where the processed, zipped data directory will be moved if all checks pass.
-    - -j, --rejected_dir \<directory>: Specifies the destination directory for input directories that do not contain enough email addresses or fail initial checks.
-    - -i, --ignore: If present, the script will ignore unprocessable files and continue execution instead of terminating.
-    - -s, --parse_sql: If present, enables the conversion of .sql files to .csv during processing using the go_sql2csv.
 
 ## File Processing Logic
 - The script follows a robust processing flow:
@@ -101,7 +132,7 @@ options:
         - other
     - Format Conversion & Delimiter Detection:
         - xlsx files are converted to csv.
-        - sql files are converted to csv (if --sql is enabled) using the go_sql2csv.
+        - sql files (mysql) are converted to csv (if --sql is enabled).
         - csv files are analyzed for their delimiters.
     - Output Structuring:
         - A workdir/upload directory is created.
@@ -130,8 +161,3 @@ Upon successful processing, an input directory named input_dir (for example) wou
         ├── DATA.zip (Zip file that can be pushed to data pipeline)
         └── manifest.yaml
 ```
-## Contributing
-Contributions are welcome! Please feel free to open issues or submit pull requests.
-
-## License
-This project is licensed under the MIT License - see the LICENSE file for details.

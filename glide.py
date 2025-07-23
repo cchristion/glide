@@ -383,7 +383,10 @@ def sql_chunk(file: Path) -> Generator[str]:
 
 
 def preprocess_sql(search_dir: Path) -> bool:
-    """Convert sql to csv's."""
+    """Convert sql to csv's.
+
+    Only processes mysql and if a line starts with INSERT statement
+    """
     for file_index, file in enumerate(get_filtered_files(search_dir)):
         if classify_file(file) == "sql":
             outdir = Path(search_dir.absolute(), workdir, "s2c", str(file_index))
