@@ -47,6 +47,7 @@ This Python script automates the process of preparing and packaging data directo
     ```bash
     # Example for micromamba
     micromamba create -n glide -y -q -c conda-forge python=3
+    micromamba activate glide
     ```
 3. Prep Tika
     ```bash
